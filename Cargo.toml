@@ -1,0 +1,31 @@
+[package]
+name = "less-browser"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+default-run = "less-browser"
+
+# Own workspace: kept out of the parent `less` workspace (CEF FFI needs unsafe).
+[workspace]
+
+[package.metadata.cef.bundle]
+helper_name = "less-browser-helper"
+
+[dependencies]
+cef = "=156.4.0"
+eframe = "0.37"
+less-input = { path = "crates/less-input", features = ["egui"] }
+semver = "1"
+winit = "0.30"
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "warn"
+
+
+# Debug info is the bulk of target/debug; panics keep file:line, lldb loses locals.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
