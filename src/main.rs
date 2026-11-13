@@ -6,7 +6,9 @@ mod input;
 use browser::{Shared, SharedRc};
 use cef::{ImplBrowser, ImplBrowserHost, ImplFrame};
 use eframe::EframePumpStatus;
-use eframe::egui::{self, Event, EventFilter, Id, Key, MouseWheelUnit, Pos2, Rect, Sense, TextureHandle};
+use eframe::egui::{
+    self, Event, EventFilter, Id, Key, MouseWheelUnit, Pos2, Rect, Sense, TextureHandle,
+};
 use less_input::PageEngine;
 use std::{cell::RefCell, process::ExitCode, rc::Rc, time::Duration};
 use winit::event_loop::EventLoop;
@@ -24,14 +26,21 @@ fn main() -> ExitCode {
     let _loader = {
         let exe = std::env::current_exe().expect("current exe path");
         let loader = cef::library_loader::LibraryLoader::new(&exe, false);
-        assert!(loader.load(), "cannot load the CEF framework; run the bundled .app");
+        assert!(
+            loader.load(),
+            "cannot load the CEF framework; run the bundled .app"
+        );
         loader
     };
     let _ = cef::api_hash(cef::sys::CEF_API_VERSION_LAST, 0);
 
     let args = cef::args::Args::new();
     let mut app = browser::LessApp::new();
-    let code = cef::execute_process(Some(args.as_main_args()), Some(&mut app), std::ptr::null_mut());
+    let code = cef::execute_process(
+        Some(args.as_main_args()),
+        Some(&mut app),
+        std::ptr::null_mut(),
+    );
     if code >= 0 {
         return ExitCode::from(code as u8);
     }
@@ -43,12 +52,19 @@ fn main() -> ExitCode {
         ..Default::default()
     };
     assert_eq!(
-        cef::initialize(Some(args.as_main_args()), Some(&settings), Some(&mut app), std::ptr::null_mut()),
+        cef::initialize(
+            Some(args.as_main_args()),
+            Some(&settings),
+            Some(&mut app),
+            std::ptr::null_mut()
+        ),
         1,
         "CEF initialize failed"
     );
 
-    let mut event_loop = EventLoop::<eframe::UserEvent>::with_user_event().build().expect("winit event loop");
+    let mut event_loop = EventLoop::<eframe::UserEvent>::with_user_event()
+        .build()
+        .expect("winit event loop");
     let mut window = eframe::create_native(
         "less-browser",
         eframe::NativeOptions::default(),
@@ -58,7 +74,9 @@ fn main() -> ExitCode {
     // winit pumps first so it, not CEF, receives NSApplication's did-finish-launching.
     let code = loop {
         // shortcut: fixed <=16 ms CEF pump, switch to BrowserProcessHandler::on_schedule_message_pump_work when idle CPU matters.
-        if let EframePumpStatus::Exit(code) = window.pump_eframe_app(&mut event_loop, Some(PUMP_INTERVAL)) {
+        if let EframePumpStatus::Exit(code) =
+            window.pump_eframe_app(&mut event_loop, Some(PUMP_INTERVAL))
+        {
             break code;
         }
         cef::do_message_loop_work();
@@ -141,13 +159,24 @@ impl BrowserApp {
             let image = egui::ColorImage::from_rgba_premultiplied(size, &rgba);
             match &mut self.texture {
                 Some(t) => t.set(image, egui::TextureOptions::LINEAR),
-                None => self.texture = Some(ui.ctx().load_texture("page", image, egui::TextureOptions::LINEAR)),
+                None => {
+                    self.texture = Some(ui.ctx().load_texture(
+                        "page",
+                        image,
+                        egui::TextureOptions::LINEAR,
+                    ))
+                }
             }
         }
         if let Some(t) = &self.texture {
             let size = t.size_vec2() / ui.ctx().pixels_per_point();
             let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
-            ui.painter_at(rect).image(t.id(), Rect::from_min_size(rect.min, size), uv, egui::Color32::WHITE);
+            ui.painter_at(rect).image(
+                t.id(),
+                Rect::from_min_size(rect.min, size),
+                uv,
+                egui::Color32::WHITE,
+            );
         }
     }
 
@@ -158,11 +187,15 @@ impl BrowserApp {
         let Some(host) = self.host() else { return };
         let frame = self.browser.main_frame();
         let (events, pointer, time) = ui.input(|i| (i.events.clone(), i.pointer.clone(), i.time));
-        let held = [egui::PointerButton::Primary, egui::PointerButton::Middle, egui::PointerButton::Secondary]
-            .into_iter()
-            .filter(|b| pointer.button_down(*b))
-            .filter_map(input::mouse_button)
-            .fold(0, |f, (_, bit)| f | bit);
+        let held = [
+            egui::PointerButton::Primary,
+            egui::PointerButton::Middle,
+            egui::PointerButton::Secondary,
+        ]
+        .into_iter()
+        .filter(|b| pointer.button_down(*b))
+        .filter_map(input::mouse_button)
+        .fold(0, |f, (_, bit)| f | bit);
         let over_page = pointer.hover_pos().is_some_and(|p| rect.contains(p));
         let mouse = |pos: Pos2, mods: egui::Modifiers| cef::MouseEvent {
             x: (pos.x - rect.min.x) as i32,
@@ -177,23 +210,56 @@ impl BrowserApp {
                 Event::PointerMoved(pos) if rect.contains(pos) || held != 0 => {
                     host.send_mouse_move_event(Some(&mouse(pos, pointer_mods(ui))), 0);
                 }
-                Event::PointerGone => host.send_mouse_move_event(Some(&cef::MouseEvent::default()), 1),
-                Event::PointerButton { pos, button, pressed, modifiers } if rect.contains(pos) || !pressed => {
-                    let Some((kind, _)) = input::mouse_button(button) else { continue };
-                    let count = if pressed { self.click_count(time, pos, button) } else { self.last_click.map_or(1, |c| c.3) };
-                    host.send_mouse_click_event(Some(&mouse(pos, modifiers)), kind, (!pressed) as i32, count);
+                Event::PointerGone => {
+                    host.send_mouse_move_event(Some(&cef::MouseEvent::default()), 1)
                 }
-                Event::MouseWheel { unit, delta, modifiers, .. } if over_page => {
+                Event::PointerButton {
+                    pos,
+                    button,
+                    pressed,
+                    modifiers,
+                } if rect.contains(pos) || !pressed => {
+                    let Some((kind, _)) = input::mouse_button(button) else {
+                        continue;
+                    };
+                    let count = if pressed {
+                        self.click_count(time, pos, button)
+                    } else {
+                        self.last_click.map_or(1, |c| c.3)
+                    };
+                    host.send_mouse_click_event(
+                        Some(&mouse(pos, modifiers)),
+                        kind,
+                        (!pressed) as i32,
+                        count,
+                    );
+                }
+                Event::MouseWheel {
+                    unit,
+                    delta,
+                    modifiers,
+                    ..
+                } if over_page => {
                     let delta = match unit {
                         MouseWheelUnit::Point => delta,
                         MouseWheelUnit::Line => delta * 40.0,
                         MouseWheelUnit::Page => delta * rect.height(),
                     };
                     let pos = pointer.hover_pos().unwrap_or(rect.min);
-                    host.send_mouse_wheel_event(Some(&mouse(pos, modifiers)), delta.x as i32, delta.y as i32);
+                    host.send_mouse_wheel_event(
+                        Some(&mouse(pos, modifiers)),
+                        delta.x as i32,
+                        delta.y as i32,
+                    );
                 }
                 _ if !self.page_focused => {}
-                Event::Key { key, physical_key, pressed, modifiers, .. } => {
+                Event::Key {
+                    key,
+                    physical_key,
+                    pressed,
+                    modifiers,
+                    ..
+                } => {
                     if pressed
                         && !editable
                         && let Some(k) = less_input::egui::to_less_key(key, modifiers)
@@ -203,11 +269,13 @@ impl BrowserApp {
                             self.run_js(&input::scroll_js(action));
                         }
                         if action.is_some() || self.page_keys.is_pending() {
-                            swallow_text = matches!(k.key, less_input::Key::Char(_)) && !k.mods.ctrl;
+                            swallow_text =
+                                matches!(k.key, less_input::Key::Char(_)) && !k.mods.ctrl;
                             continue;
                         }
                     }
-                    if pressed && modifiers.mac_cmd
+                    if pressed
+                        && modifiers.mac_cmd
                         && let Some(frame) = &frame
                     {
                         match key {
@@ -245,7 +313,9 @@ impl BrowserApp {
     /// 1 for a fresh press, +1 (up to 3) for a quick press near the previous one.
     fn click_count(&mut self, time: f64, pos: Pos2, button: egui::PointerButton) -> i32 {
         let count = match self.last_click {
-            Some((t, p, b, n)) if b == button && time - t < 0.5 && p.distance(pos) < 5.0 => n % 3 + 1,
+            Some((t, p, b, n)) if b == button && time - t < 0.5 && p.distance(pos) < 5.0 => {
+                n % 3 + 1
+            }
             _ => 1,
         };
         self.last_click = Some((time, pos, button, count));
@@ -267,10 +337,14 @@ impl eframe::App for BrowserApp {
         }
 
         egui::Panel::top("toolbar").show(ui, |ui| {
-            let edit = egui::TextEdit::singleline(&mut self.address).id(address_id).desired_width(f32::INFINITY);
+            let edit = egui::TextEdit::singleline(&mut self.address)
+                .id(address_id)
+                .desired_width(f32::INFINITY);
             let response = ui.add(edit);
             if response.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
-                if let (Some(url), Some(frame)) = (normalize_url(&self.address), self.browser.main_frame()) {
+                if let (Some(url), Some(frame)) =
+                    (normalize_url(&self.address), self.browser.main_frame())
+                {
                     frame.load_url(Some(&url.as_str().into()));
                     self.address = url;
                 }
@@ -281,13 +355,22 @@ impl eframe::App for BrowserApp {
         egui::CentralPanel::no_frame().show(ui, |ui| {
             let rect = ui.max_rect();
             let response = ui.interact(rect, page_id, Sense::click());
-            if response.is_pointer_button_down_on() || (self.texture.is_none() && !address_focused) {
+            if response.is_pointer_button_down_on() || (self.texture.is_none() && !address_focused)
+            {
                 response.request_focus();
             }
             let focused = response.has_focus();
             if focused {
                 ui.memory_mut(|m| {
-                    m.set_focus_lock_filter(page_id, EventFilter { tab: true, horizontal_arrows: true, vertical_arrows: true, escape: true })
+                    m.set_focus_lock_filter(
+                        page_id,
+                        EventFilter {
+                            tab: true,
+                            horizontal_arrows: true,
+                            vertical_arrows: true,
+                            escape: true,
+                        },
+                    )
                 });
             }
             if focused != self.page_focused {
@@ -316,8 +399,15 @@ fn normalize_url(input: &str) -> Option<String> {
     if s.is_empty() {
         return None;
     }
-    let has_scheme = s.contains("://") || ["about:", "data:", "file:", "chrome:", "view-source:"].iter().any(|p| s.starts_with(p));
-    Some(if has_scheme { s.to_string() } else { format!("https://{s}") })
+    let has_scheme = s.contains("://")
+        || ["about:", "data:", "file:", "chrome:", "view-source:"]
+            .iter()
+            .any(|p| s.starts_with(p));
+    Some(if has_scheme {
+        s.to_string()
+    } else {
+        format!("https://{s}")
+    })
 }
 
 #[cfg(test)]
@@ -326,9 +416,18 @@ mod tests {
 
     #[test]
     fn url_normalization() {
-        assert_eq!(normalize_url("  example.com "), Some("https://example.com".into()));
-        assert_eq!(normalize_url("localhost:3000/x"), Some("https://localhost:3000/x".into()));
-        assert_eq!(normalize_url("http://example.com"), Some("http://example.com".into()));
+        assert_eq!(
+            normalize_url("  example.com "),
+            Some("https://example.com".into())
+        );
+        assert_eq!(
+            normalize_url("localhost:3000/x"),
+            Some("https://localhost:3000/x".into())
+        );
+        assert_eq!(
+            normalize_url("http://example.com"),
+            Some("http://example.com".into())
+        );
         assert_eq!(normalize_url("about:blank"), Some("about:blank".into()));
         assert_eq!(normalize_url("   "), None);
     }

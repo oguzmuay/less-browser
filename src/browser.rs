@@ -211,6 +211,9 @@ fn bgra_to_rgba(bgra: &[u8]) -> Vec<u8> {
 mod tests {
     #[test]
     fn bgra_swaps_red_and_blue() {
-        assert_eq!(super::bgra_to_rgba(&[1, 2, 3, 4, 5, 6, 7, 8]), vec![3, 2, 1, 4, 7, 6, 5, 8]);
+        assert_eq!(
+            super::bgra_to_rgba(&[1, 2, 3, 4, 5, 6, 7, 8]),
+            vec![3, 2, 1, 4, 7, 6, 5, 8]
+        );
     }
 }
