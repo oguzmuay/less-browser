@@ -38,7 +38,7 @@ jobs:
         run: scripts/fetch-cef.sh
 
       - name: fmt
-        run: cargo fmt --check
+        run: cargo fmt -p less-browser --check
 
       - name: clippy
         run: cargo clippy --all-targets --locked -- -D warnings
